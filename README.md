@@ -76,31 +76,3 @@ yuno.continuePayment()  -- required for 3DS/async methods
 ```
 
 Secret key never touches the browser — only `server.js` holds `YUNO_PRIVATE_SECRET_KEY`.
-
-## 6. Likely Q&A during the role play
-
-- **"Why continuePayment() after every payment, even simple card success?"** — it's a no-op
-  when there's nothing left to do; it's required when `sdk_action_required: true` comes back
-  (3DS challenge, PIX QR, bank redirect). Calling it unconditionally is the pattern in Yuno's
-  own quickstart.
-- **"Payment came back DECLINED — how do you debug it?"** — check `status_detail.sub_status` on
-  the payment response first, or the payment description trick (set description = expected
-  status name) mentioned in the testing-gateway doc; also check whether the routing step is
-  actually published and pointing at the right connection.
-- **"How do you avoid double-charging on a retry?"** — `X-Idempotency-Key` header on
-  `/payments`, generated fresh per attempt, reused only when retrying an unclear failure
-  (timeout / 5xx), not on a genuine new attempt.
-- **"PCI scope?"** — card data goes straight from the SDK's hosted fields to Yuno, never touches
-  your server; you only ever see a one-time token.
-
-## Honest gaps / things to verify before the actual call
-
-- I built this from Yuno's public docs (`docs.y.uno`), fetched today. The PDF referenced a
-  dashboard invite/config walkthrough via hyperlinks that didn't survive the PDF-to-text
-  extraction — skim your actual invite email in case it differs from the public "Set Up Your
-  Account" guide I followed.
-- I did not implement customer creation (`/customers`) — checkout sessions don't strictly
-  require `customer_id` per the current API schema, so I left it out to keep the demo focused.
-  Mention this as a deliberate scope cut if asked, not an oversight.
-- Not tested against a live sandbox account (no credentials available in this environment) —
-  run it yourself against your real sandbox keys before the call.
