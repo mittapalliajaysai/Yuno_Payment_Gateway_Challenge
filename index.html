@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Yunique Fashion Store — Checkout</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://sdk-web.y.uno/v1.9/main.js"></script>
+  <style>
+
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+    h1 { font-size: 1.2rem; }
+    #payment-form { margin-top: 16px; min-height: 200px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+    #pay-button { margin-top: 16px; padding: 10px 20px; cursor: pointer; }
+    #status { margin-top: 16px; padding: 12px; border-radius: 8px; background: #f4f4f4; font-size: 0.85rem; white-space: pre-wrap; }
+    .ok { background: #e6f7ec; }
+    .fail { background: #fdecea; }
+  </style>
+</head>
+<body>
+  <h1>Yunique Fashion Store — Test Checkout ($1000 USD)</h1>
+  <div id="payment-form">Loading payment form…</div>
+  <button id="pay-button" disabled>Pay Now</button>
+  <div id="status">Status: waiting for session…</div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const payButton = document.getElementById('pay-button');
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = cls || '';
+    }
+
+    async function boot() {
+      try {
+        
+        const config = await fetch('/api/config').then(r => r.json());
+
+        
+        const session = await fetch('/api/create-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: 1000, currency: 'USD', country: config.countryCode }),
+        }).then(r => r.json());
+
+        if (!session.checkout_session) {
+          throw new Error('No checkout_session returned — check server logs / .env credentials.');
+        }
+
+        
+        const yuno = await Yuno.initialize(config.publicKey);
+
+        
+        await yuno.startCheckout({
+          checkoutSession: session.checkout_session,
+          elementSelector: '#payment-form',
+          countryCode: config.countryCode,
+          language: config.language,
+
+          async yunoCreatePayment(oneTimeToken) {
+            setStatus('Creating payment on backend…');
+            const result = await fetch('/api/process-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                one_time_token: oneTimeToken,
+                checkout_session: session.checkout_session,
+                merchant_order_id: session.merchant_order_id,
+                amount: session.amount,
+                currency: session.currency,
+                country: session.country,
+              }),
+            }).then(r => r.json());
+
+            console.log('payment result', result);
+
+          
+            await yuno.continuePayment();
+
+            if (result.status === 'SUCCEEDED') {
+              setStatus('Status: SUCCEEDED\n' + JSON.stringify(result, null, 2), 'ok');
+            } else {
+              setStatus('Status: ' + result.status + ' / ' + (result.status_detail?.sub_status || '') + '\n' + JSON.stringify(result, null, 2), 'fail');
+            }
+          },
+
+          yunoPaymentResult(data) {
+            console.log('yunoPaymentResult', data);
+          },
+
+          yunoError(error, data) {
+            console.error('yunoError', error, data);
+            setStatus('SDK error: ' + JSON.stringify(error), 'fail');
+          },
+        });
+
+        
+        await yuno.mountCheckout();
+
+        
+        payButton.disabled = false;
+        payButton.addEventListener('click', async () => {
+          setStatus('Processing…');
+          await yuno.startPayment();
+        });
+
+        setStatus('Status: ready — enter a test card and click Pay Now.');
+      } catch (err) {
+        console.error(err);
+        setStatus('Setup error: ' + err.message, 'fail');
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>
